@@ -1,0 +1,71 @@
+# Build files
+
+build/
+bin/
+obj/
+out/
+dist/
+
+# CMake
+
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+compile_commands.json
+_install/
+
+# Compiled binaries
+
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.exe
+*.out
+
+# IDE / Editor files
+
+.vscode/
+.idea/
+*.code-workspace
+
+# OS generated files
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+
+*.tmp
+*.temp
+*.log
+*.bak
+*~
+
+# Python cache (if used later)
+
+**pycache**/
+*.py[cod]
+.pytest_cache/
+
+# Audio generated / temporary files
+
+*.wav
+*.raw
+*.pcm
+
+# Local configuration
+
+.env
+.env.*
+!.env.example
+
+# Project-specific temporary files
+
+temp/
+tmp/
+cache/
+logs/
