@@ -1,65 +1,162 @@
 # 🎹 Piano Simulator
 
-A real-time piano simulator developed in **C++ for Linux**, designed to provide responsive and low-latency piano playback using a computer keyboard.
+A simple and lightweight **Piano Simulator** built with **C++**, **SFML 2.6**, and WAV piano samples.
+
+The application provides a virtual piano that can be played using the computer keyboard or mouse, with support for three virtual piano pedals.
+
+---
 
 ## ✨ Features
 
-* 🎹 Real-time piano simulation
-* ⌨️ Computer keyboard control
-* 🔊 Real-time audio playback
-* ⚡ Low-latency audio
-* 🎵 Piano note playback
-* 🖥️ Linux support
-* 🔧 CMake-based build system
-* 🔊 PipeWire audio support
+* 🎹 Virtual piano keyboard
+* 🎵 Real WAV piano samples
+* 🎚️ Automatic sample selection and pitch adjustment
+* ⌨️ Computer keyboard support
+* 🖱️ Mouse support
+* 🎨 Visual key press feedback
+* 🦶 Three virtual piano pedals
+* ⚡ Low-latency audio playback using SFML
+* 🐧 Linux support
+
+---
+
+## 🎹 Piano Keyboard Mapping
+
+The piano keys are mapped to the computer keyboard as follows:
+
+| Keyboard | Piano Note |
+| -------- | ---------- |
+| A        | C4         |
+| S        | D4         |
+| D        | E4         |
+| F        | F4         |
+| G        | G4         |
+| H        | A4         |
+| J        | B4         |
+| K        | C5         |
+| L        | D5         |
+| Z        | E5         |
+| X        | F5         |
+| C        | G5         |
+| V        | A5         |
+| B        | B5         |
+
+---
+
+## 🦶 Pedal Mapping
+
+The simulator includes three virtual piano pedals:
+
+| Keyboard Key | Pedal        |
+| ------------ | ------------ |
+| Left Shift   | Left Pedal   |
+| Space        | Middle Pedal |
+| Right Shift  | Right Pedal  |
+
+The pedals are displayed below the piano and visually move when pressed.
+
+> **Note:** The pedals are currently visual controls. Their physical behavior does not yet modify the sound of the piano.
+
+---
+
+## 🖱️ Mouse Support
+
+Piano keys can also be played using the mouse.
+
+* **Left mouse button** → Play piano key
+* Keys change appearance while pressed.
+
+---
+
+## 🔊 Audio Samples
+
+The simulator uses WAV samples located in:
+
+```text
+sounds/
+```
+
+The application currently loads samples such as:
+
+```text
+A0.wav
+A1.wav
+A2.wav
+...
+C4.wav
+C5.wav
+...
+D#4.wav
+...
+F#5.wav
+...
+```
+
+If the exact sample for a requested note is unavailable, the simulator automatically selects the nearest available sample and adjusts its pitch.
+
+For example:
+
+```text
+E4 -> D#4  pitch=1.05946
+```
+
+This means the `D#4` sample is being used to reproduce `E4` with pitch correction.
+
+---
 
 ## 🛠️ Requirements
 
-The project is currently designed for Linux.
+Before building the project, make sure the following are installed:
 
-### Required
-
-* Linux
-* C++ compiler with C++17 support
+* C++ compiler
 * CMake
-* Make
-* PipeWire
-* PipeWire development libraries
+* SFML 2.6.x
+* SFML Audio
+* SFML Graphics
 
 On Ubuntu/Debian:
 
 ```bash
 sudo apt update
-sudo apt install build-essential cmake pkg-config pipewire pipewire-audio
+sudo apt install build-essential cmake libsfml-dev
 ```
 
-Make sure PipeWire is running:
+---
 
-```bash
-systemctl --user status pipewire
+## 📁 Project Structure
+
+```text
+PianoSimulator/
+├── CMakeLists.txt
+├── README.md
+├── sounds/
+│   ├── A0.wav
+│   ├── A1.wav
+│   ├── ...
+│   └── F#7.wav
+│
+├── piano-source/
+│   └── main.cpp
+│
+└── build/
+    └── PianoSimulator
 ```
 
-You can also check the audio system with:
-
-```bash
-wpctl status
-```
-
-## 📥 Clone the Repository
-
-Clone the project using SSH:
-
-```bash
-git clone git@github.com:msmojtabafar/PianoSimulator.git
-cd PianoSimulator
-```
+---
 
 ## 🔨 Build
 
-Create a build directory:
+Go to the project root:
 
 ```bash
-mkdir -p build
+cd ~/PianoSimulator
+```
+
+Create a clean build directory:
+
+```bash
+rm -rf build
+mkdir build
 cd build
 ```
 
@@ -69,13 +166,19 @@ Configure the project:
 cmake ..
 ```
 
-Build the project:
+Compile:
 
 ```bash
 make -j$(nproc)
 ```
 
-After a successful build, the executable will be generated in the build directory.
+If everything is successful, you should see:
+
+```text
+[100%] Built target PianoSimulator
+```
+
+---
 
 ## ▶️ Run
 
@@ -85,92 +188,62 @@ From the `build` directory:
 ./PianoSimulator
 ```
 
-If the executable has a different name, check the generated files:
+You should see:
 
-```bash
-ls -lh
+```text
+Loaded samples: 30
 ```
 
-Then run the generated executable.
+Then the piano simulator window will open.
 
-## 🎹 Controls
+---
 
-The computer keyboard is used to play the piano.
+## 🎧 Audio Configuration
 
-The keyboard mapping is defined by the application and can be expanded or modified as development continues.
+The project uses SFML for audio playback.
 
-## 🔊 Audio Configuration
-
-The application uses the Linux audio subsystem and is designed to work with **PipeWire**.
-
-Check the current audio configuration:
-
-```bash
-wpctl status
-```
-
-For low-latency audio, the PipeWire quantum can be configured when necessary:
+On Linux systems using PipeWire, audio latency can optionally be adjusted using:
 
 ```bash
 pw-metadata -n settings 0 clock.force-quantum 1024
 ```
 
-The exact value may depend on the system's audio hardware and configuration.
-
-## 📁 Project Structure
-
-```text
-PianoSimulator/
-├── CMakeLists.txt
-├── README.md
-├── .gitignore
-├── src/
-│   └── main.cpp
-└── piano-source/
-    └── ...
-```
-
-## 🗺️ Roadmap
-
-* [x] Basic piano sound playback
-* [x] Keyboard input
-* [x] Real-time audio playback
-* [x] Linux audio support
-* [x] Basic piano simulator
-* [ ] Improve graphical interface
-* [ ] Add visual piano keyboard
-* [ ] Add volume control
-* [ ] Add octave control
-* [ ] Add sustain
-* [ ] Add recording and playback
-* [ ] Add MIDI support
-* [ ] Further reduce audio latency
-* [ ] Add configuration panel
-
-## 🤝 Contributing
-
-Contributions, bug reports, ideas, and improvements are welcome.
-
-To contribute:
+For example, another available setting is:
 
 ```bash
-git clone git@github.com:msmojtabafar/PianoSimulator.git
-cd PianoSimulator
+pw-metadata -n settings 0 clock.force-quantum 4096
 ```
 
-Create a new branch:
+Lower values can reduce latency but may increase the chance of audio glitches depending on the system.
 
-```bash
-git checkout -b feature/my-feature
-```
+---
 
-Make your changes, commit them, and push the branch:
+## 💻 Tested Environment
 
-```bash
-git add .
-git commit -m "Add my feature"
-git push -u origin feature/my-feature
-```
+The project has been tested on:
 
-Then open a Pull Request on GitHub.
+* Linux
+* Ubuntu
+* C++17
+* SFML 2.6.2
+* CMake
+* PipeWire
 
+---
+
+## 🚀 Future Improvements
+
+Possible future improvements include:
+
+* 🎵 Real sustain pedal behavior
+* 🎵 Soft pedal behavior
+* 🎵 Sostenuto pedal behavior
+* 🎼 More piano octaves
+* 🎧 Better sample selection
+* 🔊 Improved audio latency
+* 🎚️ Volume control
+* 🎛️ Pedal effects on audio
+* 🎹 More realistic piano graphics
+* 🎼 MIDI keyboard support
+* 🎤 Recording and playback
+* 💾 Save and load performances

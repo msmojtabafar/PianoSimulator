@@ -22,6 +22,17 @@ struct PianoKey
 };
 
 // ------------------------------------------------------------
+// Piano Pedal
+// ------------------------------------------------------------
+
+struct PianoPedal
+{
+    sf::RectangleShape shape;
+    sf::Text label;
+    bool pressed;
+};
+
+// ------------------------------------------------------------
 // Convert note name -> MIDI number
 // ------------------------------------------------------------
 
@@ -110,7 +121,6 @@ std::pair<std::string, float> findBestSample(
     if (bestSample.empty())
         return {"", 1.0f};
 
-    // Pitch ratio
     float pitch =
         std::pow(
             2.0f,
@@ -127,7 +137,7 @@ std::pair<std::string, float> findBestSample(
 int main()
 {
     sf::RenderWindow window(
-        sf::VideoMode(1500, 650),
+        sf::VideoMode(1500, 700),
         "Piano Simulator"
     );
 
@@ -177,9 +187,6 @@ int main()
 
     // --------------------------------------------------------
     // Active sounds
-    //
-    // unique_ptr prevents sf::Sound from being moved around
-    // while it is playing.
     // --------------------------------------------------------
 
     std::vector<std::unique_ptr<sf::Sound>> activeSounds;
@@ -216,11 +223,8 @@ int main()
             std::make_unique<sf::Sound>();
 
         sound->setBuffer(it->second);
-
         sound->setPitch(pitch);
-
         sound->setVolume(100.f);
-
         sound->play();
 
         activeSounds.push_back(
@@ -231,7 +235,7 @@ int main()
             << note
             << " -> "
             << sample
-            << "  pitch="
+            << " pitch="
             << pitch
             << std::endl;
     };
@@ -252,7 +256,10 @@ int main()
     const float startX = 40.f;
     const float startY = 170.f;
 
-    // C4 -> B5
+    // --------------------------------------------------------
+    // White keys
+    // --------------------------------------------------------
+
     std::vector<std::string> whiteNotes =
     {
         "C4",
@@ -408,6 +415,120 @@ int main()
     }
 
     // --------------------------------------------------------
+    // Pedals
+    // --------------------------------------------------------
+
+    PianoPedal leftPedal;
+    PianoPedal middlePedal;
+    PianoPedal rightPedal;
+
+    const float pedalWidth = 90.f;
+    const float pedalHeight = 55.f;
+
+    const float pedalY = 610.f;
+
+    // Left pedal
+    leftPedal.shape.setSize(
+        sf::Vector2f(
+            pedalWidth,
+            pedalHeight
+        )
+    );
+
+    leftPedal.shape.setPosition(
+        610.f,
+        pedalY
+    );
+
+    leftPedal.shape.setFillColor(
+        sf::Color(80, 80, 90)
+    );
+
+    leftPedal.shape.setOutlineColor(
+        sf::Color::White
+    );
+
+    leftPedal.shape.setOutlineThickness(2.f);
+
+    leftPedal.pressed = false;
+
+    // Middle pedal
+    middlePedal.shape.setSize(
+        sf::Vector2f(
+            pedalWidth,
+            pedalHeight
+        )
+    );
+
+    middlePedal.shape.setPosition(
+        705.f,
+        pedalY
+    );
+
+    middlePedal.shape.setFillColor(
+        sf::Color(80, 80, 90)
+    );
+
+    middlePedal.shape.setOutlineColor(
+        sf::Color::White
+    );
+
+    middlePedal.shape.setOutlineThickness(2.f);
+
+    middlePedal.pressed = false;
+
+    // Right pedal
+    rightPedal.shape.setSize(
+        sf::Vector2f(
+            pedalWidth,
+            pedalHeight
+        )
+    );
+
+    rightPedal.shape.setPosition(
+        800.f,
+        pedalY
+    );
+
+    rightPedal.shape.setFillColor(
+        sf::Color(80, 80, 90)
+    );
+
+    rightPedal.shape.setOutlineColor(
+        sf::Color::White
+    );
+
+    rightPedal.shape.setOutlineThickness(2.f);
+
+    rightPedal.pressed = false;
+
+    // --------------------------------------------------------
+    // Pedal labels
+    // --------------------------------------------------------
+
+    if (fontLoaded)
+    {
+        leftPedal.label.setFont(font);
+        leftPedal.label.setString("LEFT");
+        leftPedal.label.setCharacterSize(16);
+        leftPedal.label.setFillColor(sf::Color::White);
+
+        middlePedal.label.setFont(font);
+        middlePedal.label.setString("MIDDLE");
+        middlePedal.label.setCharacterSize(16);
+        middlePedal.label.setFillColor(sf::Color::White);
+
+        rightPedal.label.setFont(font);
+        rightPedal.label.setString("RIGHT");
+        rightPedal.label.setCharacterSize(16);
+        rightPedal.label.setFillColor(sf::Color::White);
+
+        leftPedal.label.setPosition(625.f, 625.f);
+        middlePedal.label.setPosition(713.f, 625.f);
+        rightPedal.label.setPosition(815.f, 625.f);
+    }
+
+    // --------------------------------------------------------
     // Keyboard mapping
     // --------------------------------------------------------
 
@@ -446,11 +567,69 @@ int main()
             }
 
             // ------------------------------------------------
-            // Keyboard
+            // Keyboard pressed
             // ------------------------------------------------
 
             if (event.type == sf::Event::KeyPressed)
             {
+                // --------------------------------------------
+                // LEFT SHIFT -> LEFT PEDAL
+                // --------------------------------------------
+
+                if (event.key.code == sf::Keyboard::LShift)
+                {
+                    leftPedal.pressed = true;
+
+                    leftPedal.shape.setPosition(
+                        610.f,
+                        pedalY + 8.f
+                    );
+
+                    leftPedal.shape.setFillColor(
+                        sf::Color(130, 130, 150)
+                    );
+                }
+
+                // --------------------------------------------
+                // SPACE -> MIDDLE PEDAL
+                // --------------------------------------------
+
+                if (event.key.code == sf::Keyboard::Space)
+                {
+                    middlePedal.pressed = true;
+
+                    middlePedal.shape.setPosition(
+                        705.f,
+                        pedalY + 8.f
+                    );
+
+                    middlePedal.shape.setFillColor(
+                        sf::Color(130, 130, 150)
+                    );
+                }
+
+                // --------------------------------------------
+                // RIGHT SHIFT -> RIGHT PEDAL
+                // --------------------------------------------
+
+                if (event.key.code == sf::Keyboard::RShift)
+                {
+                    rightPedal.pressed = true;
+
+                    rightPedal.shape.setPosition(
+                        800.f,
+                        pedalY + 8.f
+                    );
+
+                    rightPedal.shape.setFillColor(
+                        sf::Color(130, 130, 150)
+                    );
+                }
+
+                // --------------------------------------------
+                // Piano keys
+                // --------------------------------------------
+
                 auto it =
                     keyboardMap.find(
                         event.key.code
@@ -467,7 +646,6 @@ int main()
                         );
                     }
 
-                    // White key visual
                     for (auto& key : whiteKeys)
                     {
                         if (key.note == it->second)
@@ -480,7 +658,6 @@ int main()
                         }
                     }
 
-                    // Black key visual
                     for (auto& key : blackKeys)
                     {
                         if (key.note == it->second)
@@ -496,11 +673,69 @@ int main()
             }
 
             // ------------------------------------------------
-            // Keyboard release
+            // Keyboard released
             // ------------------------------------------------
 
             if (event.type == sf::Event::KeyReleased)
             {
+                // --------------------------------------------
+                // LEFT SHIFT
+                // --------------------------------------------
+
+                if (event.key.code == sf::Keyboard::LShift)
+                {
+                    leftPedal.pressed = false;
+
+                    leftPedal.shape.setPosition(
+                        610.f,
+                        pedalY
+                    );
+
+                    leftPedal.shape.setFillColor(
+                        sf::Color(80, 80, 90)
+                    );
+                }
+
+                // --------------------------------------------
+                // SPACE
+                // --------------------------------------------
+
+                if (event.key.code == sf::Keyboard::Space)
+                {
+                    middlePedal.pressed = false;
+
+                    middlePedal.shape.setPosition(
+                        705.f,
+                        pedalY
+                    );
+
+                    middlePedal.shape.setFillColor(
+                        sf::Color(80, 80, 90)
+                    );
+                }
+
+                // --------------------------------------------
+                // RIGHT SHIFT
+                // --------------------------------------------
+
+                if (event.key.code == sf::Keyboard::RShift)
+                {
+                    rightPedal.pressed = false;
+
+                    rightPedal.shape.setPosition(
+                        800.f,
+                        pedalY
+                    );
+
+                    rightPedal.shape.setFillColor(
+                        sf::Color(80, 80, 90)
+                    );
+                }
+
+                // --------------------------------------------
+                // Piano keys
+                // --------------------------------------------
+
                 auto it =
                     keyboardMap.find(
                         event.key.code
@@ -642,7 +877,6 @@ int main()
             }
         }
 
-
         // ----------------------------------------------------
         // Draw
         // ----------------------------------------------------
@@ -669,8 +903,21 @@ int main()
             window.draw(key.shape);
         }
 
+        // Pedals
+        window.draw(leftPedal.shape);
+        window.draw(middlePedal.shape);
+        window.draw(rightPedal.shape);
+
+        if (fontLoaded)
+        {
+            window.draw(leftPedal.label);
+            window.draw(middlePedal.label);
+            window.draw(rightPedal.label);
+        }
+
         window.display();
     }
 
     return 0;
 }
+
