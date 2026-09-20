@@ -9,133 +9,163 @@
 #include <cmath>
 #include <algorithm>
 
-// ------------------------------------------------------------
-// Piano Key
-// ------------------------------------------------------------
-
-struct PianoKey
-{
+struct PianoKey {
     sf::RectangleShape shape;
     std::string note;
     bool black;
     bool pressed;
 };
 
-// ------------------------------------------------------------
-// Piano Pedal
-// ------------------------------------------------------------
-
-struct PianoPedal
-{
+struct PianoPedal {
     sf::RectangleShape shape;
     sf::Text label;
     bool pressed;
 };
 
-// ------------------------------------------------------------
-// Convert note name -> MIDI number
-// ------------------------------------------------------------
+struct PlayingNote {
+    std::unique_ptr<sf::Sound> sound;
+    std::string note;
+    sf::Keyboard::Key key;
 
-int noteToMidi(const std::string& note)
-{
+    bool keyHeld;
+    bool sostenutoCaptured;
+};
+
+int noteToMidi(const std::string& note) {
     if (note.size() < 2)
         return -1;
 
-    std::string name = note.substr(0, note.size() - 1);
+    int semitone = 0;
 
-    int octave = note.back() - '0';
+    switch (note[0]) {
+        case 'C': semitone = 0; break;
+        case 'D': semitone = 2; break;
+        case 'E': semitone = 4; break;
+        case 'F': semitone = 5; break;
+        case 'G': semitone = 7; break;
+        case 'A': semitone = 9; break;
+        case 'B': semitone = 11; break;
+        default:
+            return -1;
+    }
 
-    int semitone = -1;
+    int index = 1;
 
-    if (name == "C")  semitone = 0;
-    if (name == "C#") semitone = 1;
-    if (name == "D")  semitone = 2;
-    if (name == "D#") semitone = 3;
-    if (name == "E")  semitone = 4;
-    if (name == "F")  semitone = 5;
-    if (name == "F#") semitone = 6;
-    if (name == "G")  semitone = 7;
-    if (name == "G#") semitone = 8;
-    if (name == "A")  semitone = 9;
-    if (name == "A#") semitone = 10;
-    if (name == "B")  semitone = 11;
+    if (note[index] == '#') {
+        semitone++;
+        index++;
+    }
 
-    if (semitone == -1)
+    if (index >= static_cast<int>(note.size()))
+        return -1;
+
+    int octave = note[index] - '0';
+
+    if (octave < 0 || octave > 9)
         return -1;
 
     return (octave + 1) * 12 + semitone;
 }
 
-// ------------------------------------------------------------
-// MIDI -> note name
-// ------------------------------------------------------------
-
-std::string midiToNote(int midi)
-{
-    static const std::vector<std::string> names =
-    {
-        "C", "C#", "D", "D#", "E", "F",
-        "F#", "G", "G#", "A", "A#", "B"
-    };
-
-    int octave = (midi / 12) - 1;
-    int note = midi % 12;
-
-    return names[note] + std::to_string(octave);
-}
-
-// ------------------------------------------------------------
-// Find nearest available sample
-// ------------------------------------------------------------
-
-std::pair<std::string, float> findBestSample(
+std::pair<const sf::SoundBuffer*, float>
+findBestSample(
     const std::string& targetNote,
-    const std::map<std::string, sf::SoundBuffer>& buffers)
-{
+    const std::map<std::string, sf::SoundBuffer>& buffers
+) {
     int targetMidi = noteToMidi(targetNote);
 
-    if (targetMidi < 0)
-        return {"", 1.0f};
+    const sf::SoundBuffer* bestBuffer = nullptr;
 
-    std::string bestSample;
     int bestDistance = 9999;
-    int bestMidi = 0;
+    std::string bestNote;
 
-    for (const auto& pair : buffers)
-    {
-        int sampleMidi = noteToMidi(pair.first);
+    for (const auto& [sampleNote, buffer] : buffers) {
+
+        int sampleMidi = noteToMidi(sampleNote);
 
         if (sampleMidi < 0)
             continue;
 
-        int distance = std::abs(targetMidi - sampleMidi);
+        int distance =
+            std::abs(targetMidi - sampleMidi);
 
-        if (distance < bestDistance)
-        {
+        if (distance < bestDistance) {
             bestDistance = distance;
-            bestSample = pair.first;
-            bestMidi = sampleMidi;
+            bestBuffer = &buffer;
+            bestNote = sampleNote;
         }
     }
 
-    if (bestSample.empty())
-        return {"", 1.0f};
+    if (!bestBuffer)
+        return {nullptr, 1.0f};
 
     float pitch =
         std::pow(
             2.0f,
-            static_cast<float>(targetMidi - bestMidi) / 12.0f
+            static_cast<float>(
+                targetMidi - noteToMidi(bestNote)
+            ) / 12.0f
         );
 
-    return {bestSample, pitch};
+    return {bestBuffer, pitch};
 }
 
-// ------------------------------------------------------------
-// Main
-// ------------------------------------------------------------
+void playNote(
+    const std::string& note,
+    sf::Keyboard::Key key,
+    const std::map<std::string, sf::SoundBuffer>& buffers,
+    std::vector<PlayingNote>& activeNotes,
+    bool softPedal
+) {
+    auto result =
+        findBestSample(note, buffers);
 
-int main()
-{
+    if (!result.first)
+        return;
+
+    auto sound =
+        std::make_unique<sf::Sound>();
+
+    sound->setBuffer(*result.first);
+
+    sound->setPitch(result.second);
+
+    if (softPedal)
+        sound->setVolume(55.f);
+    else
+        sound->setVolume(100.f);
+
+    sound->play();
+
+    std::cout
+        << note
+        << " -> pitch="
+        << result.second;
+
+    if (softPedal)
+        std::cout << " | SOFT";
+
+    std::cout << std::endl;
+
+    PlayingNote playing;
+
+    playing.sound = std::move(sound);
+    playing.note = note;
+    playing.key = key;
+    playing.keyHeld = true;
+    playing.sostenutoCaptured = false;
+
+    activeNotes.push_back(
+        std::move(playing)
+    );
+}
+
+int main() {
+
+    // --------------------------------------------------
+    // Window
+    // --------------------------------------------------
+
     sf::RenderWindow window(
         sf::VideoMode(1500, 700),
         "Piano Simulator"
@@ -143,41 +173,88 @@ int main()
 
     window.setFramerateLimit(60);
 
-    // --------------------------------------------------------
+
+    // --------------------------------------------------
+    // Font
+    // --------------------------------------------------
+
+    sf::Font font;
+
+    if (!font.loadFromFile(
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    )) {
+        std::cerr
+            << "Failed to load font."
+            << std::endl;
+
+        return 1;
+    }
+
+
+    // --------------------------------------------------
     // Load samples
-    // --------------------------------------------------------
-
-    const std::vector<std::string> sampleNotes =
-    {
-        "A0","A1","A2","A3","A4","A5","A6","A7",
-
-        "C1","C2","C3","C4","C5","C6","C7","C8",
-
-        "D#1","D#2","D#3","D#4","D#5","D#6","D#7",
-
-        "F#1","F#2","F#3","F#4","F#5","F#6","F#7"
-    };
+    // --------------------------------------------------
 
     std::map<std::string, sf::SoundBuffer> buffers;
 
-    for (const auto& note : sampleNotes)
-    {
+    std::vector<std::string> sampleNotes = {
+
+        "A0",
+        "A1",
+        "A2",
+        "A3",
+        "A4",
+        "A5",
+        "A6",
+        "A7",
+
+        "C1",
+        "C2",
+        "C3",
+        "C4",
+        "C5",
+        "C6",
+        "C7",
+        "C8",
+
+        "D#1",
+        "D#2",
+        "D#3",
+        "D#4",
+        "D#5",
+        "D#6",
+        "D#7",
+
+        "F#1",
+        "F#2",
+        "F#3",
+        "F#4",
+        "F#5",
+        "F#6",
+        "F#7"
+    };
+
+    for (const auto& note : sampleNotes) {
+
         sf::SoundBuffer buffer;
 
         std::string path =
             "../sounds/" + note + ".wav";
 
-        if (!buffer.loadFromFile(path))
-        {
+        if (!buffer.loadFromFile(path)) {
+
             std::cerr
-                << "Failed to load "
+                << "Failed to load: "
                 << path
                 << std::endl;
 
             continue;
         }
 
-        buffers.emplace(note, std::move(buffer));
+        buffers.emplace(
+            note,
+            std::move(buffer)
+        );
     }
 
     std::cout
@@ -185,83 +262,21 @@ int main()
         << buffers.size()
         << std::endl;
 
-    // --------------------------------------------------------
-    // Active sounds
-    // --------------------------------------------------------
 
-    std::vector<std::unique_ptr<sf::Sound>> activeSounds;
+    // --------------------------------------------------
+    // Piano keys
+    // --------------------------------------------------
 
-    // --------------------------------------------------------
-    // Play note
-    // --------------------------------------------------------
+    std::vector<PianoKey> keys;
 
-    auto playNote =
-        [&](const std::string& note)
-    {
-        auto result =
-            findBestSample(note, buffers);
+    float startX = 40.f;
+    float startY = 170.f;
 
-        const std::string& sample = result.first;
-        float pitch = result.second;
+    float whiteWidth = 75.f;
+    float whiteHeight = 400.f;
 
-        if (sample.empty())
-        {
-            std::cerr
-                << "No sample available for "
-                << note
-                << std::endl;
+    std::vector<std::string> whiteNotes = {
 
-            return;
-        }
-
-        auto it = buffers.find(sample);
-
-        if (it == buffers.end())
-            return;
-
-        auto sound =
-            std::make_unique<sf::Sound>();
-
-        sound->setBuffer(it->second);
-        sound->setPitch(pitch);
-        sound->setVolume(100.f);
-        sound->play();
-
-        activeSounds.push_back(
-            std::move(sound)
-        );
-
-        std::cout
-            << note
-            << " -> "
-            << sample
-            << " pitch="
-            << pitch
-            << std::endl;
-    };
-
-    // --------------------------------------------------------
-    // Piano
-    // --------------------------------------------------------
-
-    std::vector<PianoKey> whiteKeys;
-    std::vector<PianoKey> blackKeys;
-
-    const float whiteWidth = 75.f;
-    const float whiteHeight = 400.f;
-
-    const float blackWidth = 45.f;
-    const float blackHeight = 250.f;
-
-    const float startX = 40.f;
-    const float startY = 170.f;
-
-    // --------------------------------------------------------
-    // White keys
-    // --------------------------------------------------------
-
-    std::vector<std::string> whiteNotes =
-    {
         "C4",
         "D4",
         "E4",
@@ -279,13 +294,14 @@ int main()
         "B5"
     };
 
-    for (size_t i = 0; i < whiteNotes.size(); ++i)
-    {
-        PianoKey key;
 
-        key.note = whiteNotes[i];
-        key.black = false;
-        key.pressed = false;
+    // White keys
+
+    for (size_t i = 0;
+         i < whiteNotes.size();
+         ++i) {
+
+        PianoKey key;
 
         key.shape.setSize(
             sf::Vector2f(
@@ -307,43 +323,45 @@ int main()
             sf::Color::Black
         );
 
-        key.shape.setOutlineThickness(1.f);
+        key.shape.setOutlineThickness(
+            1.f
+        );
 
-        whiteKeys.push_back(key);
+        key.note = whiteNotes[i];
+        key.black = false;
+        key.pressed = false;
+
+        keys.push_back(key);
     }
 
-    // --------------------------------------------------------
+
     // Black keys
-    // --------------------------------------------------------
 
-    struct BlackInfo
-    {
-        int position;
-        std::string note;
-    };
+    std::vector<std::pair<int, std::string>>
+        blackKeyData = {
 
-    std::vector<BlackInfo> blackInfo =
-    {
         {0, "C#4"},
         {1, "D#4"},
+
         {3, "F#4"},
         {4, "G#4"},
         {5, "A#4"},
 
         {7, "C#5"},
         {8, "D#5"},
+
         {10, "F#5"},
         {11, "G#5"},
         {12, "A#5"}
     };
 
-    for (const auto& info : blackInfo)
-    {
+    for (const auto& [index, note] :
+         blackKeyData) {
+
         PianoKey key;
 
-        key.note = info.note;
-        key.black = true;
-        key.pressed = false;
+        float blackWidth = 48.f;
+        float blackHeight = 250.f;
 
         key.shape.setSize(
             sf::Vector2f(
@@ -354,8 +372,7 @@ int main()
 
         key.shape.setPosition(
             startX
-                + (info.position + 1)
-                    * whiteWidth
+                + (index + 1) * whiteWidth
                 - blackWidth / 2.f,
             startY
         );
@@ -368,172 +385,27 @@ int main()
             sf::Color::Black
         );
 
-        key.shape.setOutlineThickness(2.f);
-
-        blackKeys.push_back(key);
-    }
-
-    // --------------------------------------------------------
-    // Font
-    // --------------------------------------------------------
-
-    sf::Font font;
-
-    bool fontLoaded =
-        font.loadFromFile(
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+        key.shape.setOutlineThickness(
+            1.f
         );
 
-    // --------------------------------------------------------
-    // Title
-    // --------------------------------------------------------
+        key.note = note;
+        key.black = true;
+        key.pressed = false;
 
-    sf::Text title;
-
-    if (fontLoaded)
-    {
-        title.setFont(font);
-        title.setString("PIANO SIMULATOR");
-        title.setCharacterSize(32);
-        title.setFillColor(sf::Color::White);
-        title.setPosition(40.f, 35.f);
+        keys.push_back(key);
     }
 
-    // --------------------------------------------------------
-    // Current note
-    // --------------------------------------------------------
 
-    sf::Text currentNote;
-
-    if (fontLoaded)
-    {
-        currentNote.setFont(font);
-        currentNote.setString("Press a key");
-        currentNote.setCharacterSize(22);
-        currentNote.setFillColor(sf::Color::White);
-        currentNote.setPosition(40.f, 90.f);
-    }
-
-    // --------------------------------------------------------
-    // Pedals
-    // --------------------------------------------------------
-
-    PianoPedal leftPedal;
-    PianoPedal middlePedal;
-    PianoPedal rightPedal;
-
-    const float pedalWidth = 90.f;
-    const float pedalHeight = 55.f;
-
-    const float pedalY = 610.f;
-
-    // Left pedal
-    leftPedal.shape.setSize(
-        sf::Vector2f(
-            pedalWidth,
-            pedalHeight
-        )
-    );
-
-    leftPedal.shape.setPosition(
-        610.f,
-        pedalY
-    );
-
-    leftPedal.shape.setFillColor(
-        sf::Color(80, 80, 90)
-    );
-
-    leftPedal.shape.setOutlineColor(
-        sf::Color::White
-    );
-
-    leftPedal.shape.setOutlineThickness(2.f);
-
-    leftPedal.pressed = false;
-
-    // Middle pedal
-    middlePedal.shape.setSize(
-        sf::Vector2f(
-            pedalWidth,
-            pedalHeight
-        )
-    );
-
-    middlePedal.shape.setPosition(
-        705.f,
-        pedalY
-    );
-
-    middlePedal.shape.setFillColor(
-        sf::Color(80, 80, 90)
-    );
-
-    middlePedal.shape.setOutlineColor(
-        sf::Color::White
-    );
-
-    middlePedal.shape.setOutlineThickness(2.f);
-
-    middlePedal.pressed = false;
-
-    // Right pedal
-    rightPedal.shape.setSize(
-        sf::Vector2f(
-            pedalWidth,
-            pedalHeight
-        )
-    );
-
-    rightPedal.shape.setPosition(
-        800.f,
-        pedalY
-    );
-
-    rightPedal.shape.setFillColor(
-        sf::Color(80, 80, 90)
-    );
-
-    rightPedal.shape.setOutlineColor(
-        sf::Color::White
-    );
-
-    rightPedal.shape.setOutlineThickness(2.f);
-
-    rightPedal.pressed = false;
-
-    // --------------------------------------------------------
-    // Pedal labels
-    // --------------------------------------------------------
-
-    if (fontLoaded)
-    {
-        leftPedal.label.setFont(font);
-        leftPedal.label.setString("LEFT");
-        leftPedal.label.setCharacterSize(16);
-        leftPedal.label.setFillColor(sf::Color::White);
-
-        middlePedal.label.setFont(font);
-        middlePedal.label.setString("MIDDLE");
-        middlePedal.label.setCharacterSize(16);
-        middlePedal.label.setFillColor(sf::Color::White);
-
-        rightPedal.label.setFont(font);
-        rightPedal.label.setString("RIGHT");
-        rightPedal.label.setCharacterSize(16);
-        rightPedal.label.setFillColor(sf::Color::White);
-
-        leftPedal.label.setPosition(625.f, 625.f);
-        middlePedal.label.setPosition(713.f, 625.f);
-        rightPedal.label.setPosition(815.f, 625.f);
-    }
-
-    // --------------------------------------------------------
+    // --------------------------------------------------
     // Keyboard mapping
-    // --------------------------------------------------------
+    // --------------------------------------------------
 
-    std::map<sf::Keyboard::Key, std::string> keyboardMap =
-    {
+    std::map<
+        sf::Keyboard::Key,
+        std::string
+    > keyboardMap = {
+
         {sf::Keyboard::A, "C4"},
         {sf::Keyboard::S, "D4"},
         {sf::Keyboard::D, "E4"},
@@ -551,293 +423,616 @@ int main()
         {sf::Keyboard::B, "B5"}
     };
 
-    // --------------------------------------------------------
-    // Main loop
-    // --------------------------------------------------------
 
-    while (window.isOpen())
-    {
+    // --------------------------------------------------
+    // Pedals
+    // --------------------------------------------------
+
+    std::vector<PianoPedal> pedals;
+
+    std::vector<std::string> pedalNames = {
+        "LEFT",
+        "MIDDLE",
+        "RIGHT"
+    };
+
+    float pedalX = 610.f;
+    float pedalY = 610.f;
+
+    for (int i = 0; i < 3; ++i) {
+
+        PianoPedal pedal;
+
+        pedal.shape.setSize(
+            sf::Vector2f(
+                90.f,
+                55.f
+            )
+        );
+
+        pedal.shape.setPosition(
+            pedalX + i * 95.f,
+            pedalY
+        );
+
+        pedal.shape.setFillColor(
+            sf::Color(80, 80, 80)
+        );
+
+        pedal.shape.setOutlineColor(
+            sf::Color::Black
+        );
+
+        pedal.shape.setOutlineThickness(
+            2.f
+        );
+
+        pedal.label.setFont(font);
+
+        pedal.label.setString(
+            pedalNames[i]
+        );
+
+        pedal.label.setCharacterSize(
+            16
+        );
+
+        pedal.label.setFillColor(
+            sf::Color::White
+        );
+
+        sf::FloatRect bounds =
+            pedal.label.getLocalBounds();
+
+        pedal.label.setOrigin(
+            bounds.left + bounds.width / 2.f,
+            bounds.top + bounds.height / 2.f
+        );
+
+        pedal.label.setPosition(
+            pedalX
+                + i * 95.f
+                + 45.f,
+            pedalY + 27.f
+        );
+
+        pedal.pressed = false;
+
+        pedals.push_back(pedal);
+    }
+
+
+    // --------------------------------------------------
+    // Text
+    // --------------------------------------------------
+
+    sf::Text title;
+
+    title.setFont(font);
+    title.setString("PIANO SIMULATOR");
+    title.setCharacterSize(30);
+    title.setFillColor(sf::Color::White);
+    title.setPosition(40.f, 30.f);
+
+
+    sf::Text currentNote;
+
+    currentNote.setFont(font);
+    currentNote.setString("Ready");
+    currentNote.setCharacterSize(22);
+    currentNote.setFillColor(sf::Color::White);
+    currentNote.setPosition(40.f, 90.f);
+
+
+    // --------------------------------------------------
+    // Pedal states
+    // --------------------------------------------------
+
+    bool sustainPedal = false;
+    bool softPedal = false;
+    bool sostenutoPedal = false;
+
+
+    // --------------------------------------------------
+    // Active sounds
+    // --------------------------------------------------
+
+    std::vector<PlayingNote>
+        activeNotes;
+
+
+    // --------------------------------------------------
+    // Main loop
+    // --------------------------------------------------
+
+    while (window.isOpen()) {
+
         sf::Event event;
 
-        while (window.pollEvent(event))
-        {
-            if (event.type == sf::Event::Closed)
-            {
+        while (window.pollEvent(event)) {
+
+            // ------------------------------------------
+            // Close
+            // ------------------------------------------
+
+            if (event.type ==
+                sf::Event::Closed) {
+
                 window.close();
             }
 
-            // ------------------------------------------------
+
+            // ------------------------------------------
             // Keyboard pressed
-            // ------------------------------------------------
+            // ------------------------------------------
 
-            if (event.type == sf::Event::KeyPressed)
-            {
-                // --------------------------------------------
-                // LEFT SHIFT -> LEFT PEDAL
-                // --------------------------------------------
+            if (event.type ==
+                sf::Event::KeyPressed) {
 
-                if (event.key.code == sf::Keyboard::LShift)
-                {
-                    leftPedal.pressed = true;
+                auto key =
+                    event.key.code;
 
-                    leftPedal.shape.setPosition(
-                        610.f,
-                        pedalY + 8.f
-                    );
 
-                    leftPedal.shape.setFillColor(
-                        sf::Color(130, 130, 150)
-                    );
-                }
+                // --------------------------------------
+                // RIGHT SHIFT = SUSTAIN
+                // --------------------------------------
 
-                // --------------------------------------------
-                // SPACE -> MIDDLE PEDAL
-                // --------------------------------------------
+                if (key ==
+                    sf::Keyboard::RShift) {
 
-                if (event.key.code == sf::Keyboard::Space)
-                {
-                    middlePedal.pressed = true;
+                    if (!sustainPedal) {
 
-                    middlePedal.shape.setPosition(
-                        705.f,
-                        pedalY + 8.f
-                    );
+                        sustainPedal = true;
 
-                    middlePedal.shape.setFillColor(
-                        sf::Color(130, 130, 150)
-                    );
-                }
+                        pedals[2].pressed = true;
 
-                // --------------------------------------------
-                // RIGHT SHIFT -> RIGHT PEDAL
-                // --------------------------------------------
-
-                if (event.key.code == sf::Keyboard::RShift)
-                {
-                    rightPedal.pressed = true;
-
-                    rightPedal.shape.setPosition(
-                        800.f,
-                        pedalY + 8.f
-                    );
-
-                    rightPedal.shape.setFillColor(
-                        sf::Color(130, 130, 150)
-                    );
-                }
-
-                // --------------------------------------------
-                // Piano keys
-                // --------------------------------------------
-
-                auto it =
-                    keyboardMap.find(
-                        event.key.code
-                    );
-
-                if (it != keyboardMap.end())
-                {
-                    playNote(it->second);
-
-                    if (fontLoaded)
-                    {
-                        currentNote.setString(
-                            "Playing: " + it->second
-                        );
-                    }
-
-                    for (auto& key : whiteKeys)
-                    {
-                        if (key.note == it->second)
-                        {
-                            key.pressed = true;
-
-                            key.shape.setFillColor(
-                                sf::Color(180, 220, 255)
-                            );
-                        }
-                    }
-
-                    for (auto& key : blackKeys)
-                    {
-                        if (key.note == it->second)
-                        {
-                            key.pressed = true;
-
-                            key.shape.setFillColor(
-                                sf::Color(80, 120, 160)
-                            );
-                        }
-                    }
-                }
-            }
-
-            // ------------------------------------------------
-            // Keyboard released
-            // ------------------------------------------------
-
-            if (event.type == sf::Event::KeyReleased)
-            {
-                // --------------------------------------------
-                // LEFT SHIFT
-                // --------------------------------------------
-
-                if (event.key.code == sf::Keyboard::LShift)
-                {
-                    leftPedal.pressed = false;
-
-                    leftPedal.shape.setPosition(
-                        610.f,
-                        pedalY
-                    );
-
-                    leftPedal.shape.setFillColor(
-                        sf::Color(80, 80, 90)
-                    );
-                }
-
-                // --------------------------------------------
-                // SPACE
-                // --------------------------------------------
-
-                if (event.key.code == sf::Keyboard::Space)
-                {
-                    middlePedal.pressed = false;
-
-                    middlePedal.shape.setPosition(
-                        705.f,
-                        pedalY
-                    );
-
-                    middlePedal.shape.setFillColor(
-                        sf::Color(80, 80, 90)
-                    );
-                }
-
-                // --------------------------------------------
-                // RIGHT SHIFT
-                // --------------------------------------------
-
-                if (event.key.code == sf::Keyboard::RShift)
-                {
-                    rightPedal.pressed = false;
-
-                    rightPedal.shape.setPosition(
-                        800.f,
-                        pedalY
-                    );
-
-                    rightPedal.shape.setFillColor(
-                        sf::Color(80, 80, 90)
-                    );
-                }
-
-                // --------------------------------------------
-                // Piano keys
-                // --------------------------------------------
-
-                auto it =
-                    keyboardMap.find(
-                        event.key.code
-                    );
-
-                if (it != keyboardMap.end())
-                {
-                    for (auto& key : whiteKeys)
-                    {
-                        if (key.note == it->second)
-                        {
-                            key.pressed = false;
-
-                            key.shape.setFillColor(
-                                sf::Color(245, 245, 245)
-                            );
-                        }
-                    }
-
-                    for (auto& key : blackKeys)
-                    {
-                        if (key.note == it->second)
-                        {
-                            key.pressed = false;
-
-                            key.shape.setFillColor(
-                                sf::Color(25, 25, 25)
-                            );
-                        }
-                    }
-                }
-            }
-
-            // ------------------------------------------------
-            // Mouse
-            // ------------------------------------------------
-
-            if (event.type == sf::Event::MouseButtonPressed)
-            {
-                if (event.mouseButton.button ==
-                    sf::Mouse::Left)
-                {
-                    sf::Vector2f mouse =
-                        window.mapPixelToCoords(
-                            sf::Vector2i(
-                                event.mouseButton.x,
-                                event.mouseButton.y
-                            )
+                        pedals[2].shape.move(
+                            0.f,
+                            8.f
                         );
 
-                    bool found = false;
+                        std::cout
+                            << "SUSTAIN ON"
+                            << std::endl;
+                    }
 
-                    // Black keys first
-                    for (auto& key : blackKeys)
-                    {
-                        if (key.shape.getGlobalBounds()
-                                .contains(mouse))
-                        {
-                            playNote(key.note);
+                    continue;
+                }
 
-                            if (fontLoaded)
-                            {
-                                currentNote.setString(
-                                    "Playing: "
-                                    + key.note
-                                );
+
+                // --------------------------------------
+                // LEFT SHIFT = SOFT
+                // --------------------------------------
+
+                if (key ==
+                    sf::Keyboard::LShift) {
+
+                    if (!softPedal) {
+
+                        softPedal = true;
+
+                        pedals[0].pressed = true;
+
+                        pedals[0].shape.move(
+                            0.f,
+                            8.f
+                        );
+
+                        std::cout
+                            << "SOFT ON"
+                            << std::endl;
+                    }
+
+                    continue;
+                }
+
+
+                // --------------------------------------
+                // SPACE = SOSTENUTO
+                // --------------------------------------
+
+                if (key ==
+                    sf::Keyboard::Space) {
+
+                    if (!sostenutoPedal) {
+
+                        sostenutoPedal = true;
+
+                        pedals[1].pressed = true;
+
+                        pedals[1].shape.move(
+                            0.f,
+                            8.f
+                        );
+
+                        // Capture every note
+                        // currently sounding.
+
+                        for (auto& playing :
+                             activeNotes) {
+
+                            if (
+                                playing.sound &&
+                                playing.sound->getStatus()
+                                == sf::Sound::Playing
+                            ) {
+
+                                playing.sostenutoCaptured =
+                                    true;
                             }
+                        }
 
-                            key.pressed = true;
+                        std::cout
+                            << "SOSTENUTO ON"
+                            << std::endl;
+                    }
 
-                            key.shape.setFillColor(
-                                sf::Color(80, 120, 160)
+                    continue;
+                }
+
+
+                // --------------------------------------
+                // Piano keys
+                // --------------------------------------
+
+                auto mapIt =
+                    keyboardMap.find(key);
+
+                if (mapIt != keyboardMap.end()) {
+
+                    // Ignore auto-repeat
+
+                    bool alreadyHeld = false;
+
+                    for (const auto& playing :
+                         activeNotes) {
+
+                        if (
+                            playing.key == key &&
+                            playing.keyHeld
+                        ) {
+
+                            alreadyHeld = true;
+                            break;
+                        }
+                    }
+
+                    if (alreadyHeld)
+                        continue;
+
+
+                    // Find matching visual key
+
+                    for (auto& pianoKey : keys) {
+
+                        if (
+                            pianoKey.note ==
+                            mapIt->second
+                        ) {
+
+                            pianoKey.pressed = true;
+
+                            if (pianoKey.black)
+                                pianoKey.shape.setFillColor(
+                                    sf::Color(80, 80, 80)
+                                );
+                            else
+                                pianoKey.shape.setFillColor(
+                                    sf::Color(180, 180, 180)
+                                );
+                        }
+                    }
+
+
+                    playNote(
+                        mapIt->second,
+                        key,
+                        buffers,
+                        activeNotes,
+                        softPedal
+                    );
+
+                    currentNote.setString(
+                        mapIt->second
+                    );
+                }
+            }
+
+
+            // ------------------------------------------
+            // Keyboard released
+            // ------------------------------------------
+
+            if (event.type ==
+                sf::Event::KeyReleased) {
+
+                auto key =
+                    event.key.code;
+
+
+                // --------------------------------------
+                // RIGHT SHIFT RELEASE
+                // --------------------------------------
+
+                if (key ==
+                    sf::Keyboard::RShift) {
+
+                    sustainPedal = false;
+
+                    pedals[2].pressed = false;
+
+                    pedals[2].shape.setPosition(
+                        pedalX + 2 * 95.f,
+                        pedalY
+                    );
+
+                    // Stop notes that are no longer
+                    // physically held and are not
+                    // protected by Sostenuto.
+
+                    for (auto it =
+                         activeNotes.begin();
+                         it != activeNotes.end();) {
+
+                        if (
+                            !it->keyHeld &&
+                            !it->sostenutoCaptured
+                        ) {
+
+                            it->sound->stop();
+
+                            it =
+                                activeNotes.erase(it);
+
+                        } else {
+
+                            ++it;
+                        }
+                    }
+
+                    std::cout
+                        << "SUSTAIN OFF"
+                        << std::endl;
+
+                    continue;
+                }
+
+
+                // --------------------------------------
+                // LEFT SHIFT RELEASE
+                // --------------------------------------
+
+                if (key ==
+                    sf::Keyboard::LShift) {
+
+                    softPedal = false;
+
+                    pedals[0].pressed = false;
+
+                    pedals[0].shape.setPosition(
+                        pedalX,
+                        pedalY
+                    );
+
+                    std::cout
+                        << "SOFT OFF"
+                        << std::endl;
+
+                    continue;
+                }
+
+
+                // --------------------------------------
+                // SPACE RELEASE
+                // --------------------------------------
+
+                if (key ==
+                    sf::Keyboard::Space) {
+
+                    sostenutoPedal = false;
+
+                    pedals[1].pressed = false;
+
+                    pedals[1].shape.setPosition(
+                        pedalX + 95.f,
+                        pedalY
+                    );
+
+                    // Release all notes captured
+                    // by Sostenuto.
+
+                    for (auto it =
+                         activeNotes.begin();
+                         it != activeNotes.end();) {
+
+                        if (it->sostenutoCaptured) {
+
+                            it->sostenutoCaptured =
+                                false;
+
+                            if (
+                                !it->keyHeld &&
+                                !sustainPedal
+                            ) {
+
+                                it->sound->stop();
+
+                                it =
+                                    activeNotes.erase(
+                                        it
+                                    );
+
+                                continue;
+                            }
+                        }
+
+                        ++it;
+                    }
+
+                    std::cout
+                        << "SOSTENUTO OFF"
+                        << std::endl;
+
+                    continue;
+                }
+
+
+                // --------------------------------------
+                // Piano key release
+                // --------------------------------------
+
+                auto mapIt =
+                    keyboardMap.find(key);
+
+                if (mapIt != keyboardMap.end()) {
+
+                    // Visual key release
+
+                    for (auto& pianoKey : keys) {
+
+                        if (
+                            pianoKey.note ==
+                            mapIt->second
+                        ) {
+
+                            pianoKey.pressed = false;
+
+                            if (pianoKey.black)
+                                pianoKey.shape.setFillColor(
+                                    sf::Color(25, 25, 25)
+                                );
+                            else
+                                pianoKey.shape.setFillColor(
+                                    sf::Color(245, 245, 245)
+                                );
+                        }
+                    }
+
+
+                    // Find active note
+
+                    for (auto it =
+                         activeNotes.begin();
+                         it != activeNotes.end();) {
+
+                        if (
+                            it->key == key &&
+                            it->keyHeld
+                        ) {
+
+                            it->keyHeld = false;
+
+
+                            // Stop only when neither
+                            // Sustain nor Sostenuto
+                            // is holding the note.
+
+                            if (
+                                !sustainPedal &&
+                                !it->sostenutoCaptured
+                            ) {
+
+                                it->sound->stop();
+
+                                it =
+                                    activeNotes.erase(
+                                        it
+                                    );
+
+                                continue;
+                            }
+                        }
+
+                        ++it;
+                    }
+                }
+            }
+
+
+            // ------------------------------------------
+            // Mouse pressed
+            // ------------------------------------------
+
+            if (event.type ==
+                sf::Event::MouseButtonPressed) {
+
+                if (
+                    event.mouseButton.button ==
+                    sf::Mouse::Left
+                ) {
+
+                    sf::Vector2f mousePos(
+                        event.mouseButton.x,
+                        event.mouseButton.y
+                    );
+
+
+                    // Check black keys first
+
+                    bool clicked = false;
+
+                    for (auto& pianoKey : keys) {
+
+                        if (
+                            pianoKey.black &&
+                            pianoKey.shape.getGlobalBounds()
+                                .contains(mousePos)
+                        ) {
+
+                            pianoKey.pressed = true;
+
+                            pianoKey.shape.setFillColor(
+                                sf::Color(80, 80, 80)
                             );
 
-                            found = true;
+                            playNote(
+                                pianoKey.note,
+                                sf::Keyboard::Unknown,
+                                buffers,
+                                activeNotes,
+                                softPedal
+                            );
+
+                            currentNote.setString(
+                                pianoKey.note
+                            );
+
+                            clicked = true;
 
                             break;
                         }
                     }
 
-                    // White keys
-                    if (!found)
-                    {
-                        for (auto& key : whiteKeys)
-                        {
-                            if (key.shape.getGlobalBounds()
-                                    .contains(mouse))
-                            {
-                                playNote(key.note);
 
-                                if (fontLoaded)
-                                {
-                                    currentNote.setString(
-                                        "Playing: "
-                                        + key.note
-                                    );
-                                }
+                    // Then white keys
 
-                                key.pressed = true;
+                    if (!clicked) {
 
-                                key.shape.setFillColor(
-                                    sf::Color(180, 220, 255)
+                        for (auto& pianoKey : keys) {
+
+                            if (
+                                !pianoKey.black &&
+                                pianoKey.shape
+                                    .getGlobalBounds()
+                                    .contains(mousePos)
+                            ) {
+
+                                pianoKey.pressed = true;
+
+                                pianoKey.shape.setFillColor(
+                                    sf::Color(180, 180, 180)
+                                );
+
+                                playNote(
+                                    pianoKey.note,
+                                    sf::Keyboard::Unknown,
+                                    buffers,
+                                    activeNotes,
+                                    softPedal
+                                );
+
+                                currentNote.setString(
+                                    pianoKey.note
                                 );
 
                                 break;
@@ -847,77 +1042,116 @@ int main()
                 }
             }
 
-            // ------------------------------------------------
-            // Mouse release
-            // ------------------------------------------------
 
-            if (event.type == sf::Event::MouseButtonReleased)
-            {
-                if (event.mouseButton.button ==
-                    sf::Mouse::Left)
-                {
-                    for (auto& key : whiteKeys)
-                    {
-                        key.pressed = false;
+            // ------------------------------------------
+            // Mouse released
+            // ------------------------------------------
 
-                        key.shape.setFillColor(
-                            sf::Color(245, 245, 245)
-                        );
-                    }
+            if (event.type ==
+                sf::Event::MouseButtonReleased) {
 
-                    for (auto& key : blackKeys)
-                    {
-                        key.pressed = false;
+                if (
+                    event.mouseButton.button ==
+                    sf::Mouse::Left
+                ) {
 
-                        key.shape.setFillColor(
-                            sf::Color(25, 25, 25)
-                        );
+                    for (auto& pianoKey : keys) {
+
+                        pianoKey.pressed = false;
+
+                        if (pianoKey.black)
+                            pianoKey.shape.setFillColor(
+                                sf::Color(25, 25, 25)
+                            );
+                        else
+                            pianoKey.shape.setFillColor(
+                                sf::Color(245, 245, 245)
+                            );
                     }
                 }
             }
         }
 
-        // ----------------------------------------------------
+
+        // --------------------------------------------------
+        // Remove finished sounds
+        // --------------------------------------------------
+
+        for (auto it = activeNotes.begin();
+             it != activeNotes.end();) {
+
+            if (
+                it->sound->getStatus()
+                == sf::Sound::Stopped
+            ) {
+
+                it =
+                    activeNotes.erase(it);
+
+            } else {
+
+                ++it;
+            }
+        }
+
+
+        // --------------------------------------------------
         // Draw
-        // ----------------------------------------------------
+        // --------------------------------------------------
 
         window.clear(
-            sf::Color(30, 35, 45)
+            sf::Color(35, 35, 35)
         );
 
-        if (fontLoaded)
-        {
-            window.draw(title);
-            window.draw(currentNote);
+
+        // Title
+
+        window.draw(title);
+
+        window.draw(currentNote);
+
+
+        // Piano keys
+
+        // White keys first
+
+        for (const auto& pianoKey : keys) {
+
+            if (!pianoKey.black)
+                window.draw(
+                    pianoKey.shape
+                );
         }
 
-        // White keys
-        for (auto& key : whiteKeys)
-        {
-            window.draw(key.shape);
+
+        // Black keys second
+
+        for (const auto& pianoKey : keys) {
+
+            if (pianoKey.black)
+                window.draw(
+                    pianoKey.shape
+                );
         }
 
-        // Black keys
-        for (auto& key : blackKeys)
-        {
-            window.draw(key.shape);
-        }
 
         // Pedals
-        window.draw(leftPedal.shape);
-        window.draw(middlePedal.shape);
-        window.draw(rightPedal.shape);
 
-        if (fontLoaded)
-        {
-            window.draw(leftPedal.label);
-            window.draw(middlePedal.label);
-            window.draw(rightPedal.label);
+        for (const auto& pedal : pedals) {
+
+            window.draw(
+                pedal.shape
+            );
+
+            window.draw(
+                pedal.label
+            );
         }
+
 
         window.display();
     }
 
+
     return 0;
 }
-
